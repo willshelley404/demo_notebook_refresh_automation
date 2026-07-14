@@ -1,0 +1,287 @@
+---
+title: "Ad-Hoc Revenue Data Check"
+format:
+  html:
+    theme: cosmo
+    page-layout: full
+    toc: false
+server: shiny
+---
+
+<!--
+  On-demand report for finance close. Nothing queries the database until the
+  user clicks "Run now". Deploy to Posit Connect as an interactive (Shiny) doc.
+
+  This version runs on a self-contained DuckDB database seeded with synthetic
+  data, so it works with no external driver or credentials. To move to
+  Snowflake, replace connect_db() and report_query (see the PRODUCTION note).
+-->
+
+```{r}
+#| context: setup
+#| include: false
+
+library(shiny)
+library(DBI)
+library(duckdb)
+library(DT)
+library(glue)
+library(writexl)
+library(blastula)
+
+# Row cap carried over from the GAI Snowflake guidelines: never dump raw data.
+# The demo query is pre-aggregated so this rarely bites, but keep it as a guard.
+ROW_CAP <- 500L
+
+# --- Local demo database -----------------------------------------------------
+# A DuckDB file seeded once with a fake FACTARR: one snapshot per month-end for
+# the last 18 months, broken out by subscription / customer type / source.
+DUCKDB_PATH <- file.path(tempdir(), "revenue_demo.duckdb")
+
+seed_duckdb <- function(path) {
+  set.seed(42)
+
+  # Month-end snapshot dates for the last 18 completed months.
+  firsts <- sort(seq(as.Date(cut(Sys.Date(), "month")), by = "-1 month",
+                     length.out = 19))
+  dates  <- firsts[-1] - 1                       # last day of each month
+
+  customer_types <- c("Subscription Customer",
+                      "Re-Occurring Usage Customer",
+                      "Indirect Customer")
+  sources <- c("CPQ", "NETSUITE ZAB", "EXCISE", "MYLODGE", "ZUORA INTEGRATED")
+
+  n_subs <- 300L
+  subs <- data.frame(
+    SUBSCRIPTION_KEY = sprintf("SUB%05d", seq_len(n_subs)),
+    CUSTOMER_TYPE    = sample(customer_types, n_subs, replace = TRUE,
+                              prob = c(.70, .20, .10)),
+    SOURCE           = sample(sources, n_subs, replace = TRUE,
+                              prob = c(.60, .15, .10, .10, .05)),
+    BASE_ARR         = round(runif(n_subs, 2000, 500000), 2),
+    stringsAsFactors = FALSE
+  )
+
+  fact <- do.call(rbind, lapply(dates, function(d) {
+    data.frame(
+      REPORT_DATE      = d,
+      SUBSCRIPTION_KEY = subs$SUBSCRIPTION_KEY,
+      CUSTOMER_TYPE    = subs$CUSTOMER_TYPE,
+      SOURCE           = subs$SOURCE,
+      ARR_USD          = round(subs$BASE_ARR * runif(n_subs, 0.9, 1.1), 2),
+      stringsAsFactors = FALSE
+    )
+  }))
+  fact$MRR_USD <- round(fact$ARR_USD / 12, 2)
+
+  con <- DBI::dbConnect(duckdb::duckdb(), dbdir = path)
+  on.exit(DBI::dbDisconnect(con, shutdown = TRUE), add = TRUE)
+  DBI::dbWriteTable(con, "FACTARR", fact, overwrite = TRUE)
+}
+
+if (!file.exists(DUCKDB_PATH)) seed_duckdb(DUCKDB_PATH)
+
+# --- Connection --------------------------------------------------------------
+# PRODUCTION: swap this for the Snowflake connection, e.g.
+#   DBI::dbConnect(odbc::odbc(), Driver = "Snowflake", ...)
+connect_db <- function() {
+  DBI::dbConnect(duckdb::duckdb(), dbdir = DUCKDB_PATH, read_only = TRUE)
+}
+
+# --- The report query --------------------------------------------------------
+# Same shape as the Snowflake version: leading commas, GROUP BY / SUM, and the
+# "latest snapshot on or before the as-of date" pattern. The as-of date is
+# BOUND as a parameter (?), never string-concatenated.
+# PRODUCTION: point FROM at ANALYTICS_PROD_MART.MART.FACTARR + DIMACCOUNT join.
+report_query <- glue::glue("
+  SELECT
+      REPORT_DATE
+      , CUSTOMER_TYPE
+      , SOURCE
+      , COUNT(DISTINCT SUBSCRIPTION_KEY)  AS SUBSCRIPTION_COUNT
+      , SUM(ARR_USD)                      AS TOTAL_ARR_USD
+      , SUM(MRR_USD)                      AS TOTAL_MRR_USD
+  FROM FACTARR
+  WHERE REPORT_DATE = (
+      SELECT MAX(REPORT_DATE)
+      FROM FACTARR
+      WHERE REPORT_DATE <= CAST(? AS DATE)
+  )
+  GROUP BY REPORT_DATE, CUSTOMER_TYPE, SOURCE
+  ORDER BY TOTAL_ARR_USD DESC
+  LIMIT {ROW_CAP}
+")
+
+run_report <- function(as_of_date) {
+  con <- connect_db()
+  on.exit(DBI::dbDisconnect(con, shutdown = TRUE), add = TRUE)
+  df <- DBI::dbGetQuery(con, report_query, params = list(as.character(as_of_date)))
+  # Timestamp the run so the export records when the check was executed.
+  df$DATE_RAN <- rep(format(Sys.time(), "%Y-%m-%d %H:%M:%S"), nrow(df))
+  df
+}
+
+# Exact SQL that ran, with the ? placeholder resolved to the as-of date, so it
+# can be copied and re-run against the warehouse to verify the numbers.
+resolved_sql <- function(as_of_date) {
+  sub("?", sprintf("'%s'", as.character(as_of_date)), report_query, fixed = TRUE)
+}
+```
+
+## Run a report
+
+Pick a report date (defaults to today) and click **Run now**. The query only
+executes on click, so opening this page costs nothing. The date resolves to the
+latest snapshot on or before it.
+
+```{r}
+#| echo: false
+dateInput("as_of_date", "Report date", value = Sys.Date(), max = Sys.Date())
+actionButton("run", "\u25B6 Run now", class = "btn-primary btn-lg")
+textOutput("status")
+```
+
+```{r}
+#| context: server
+# Server logic. eventReactive => only fires when the button is pressed.
+report_data <- eventReactive(input$run, {
+  withProgress(message = "Running query\u2026", value = 0.5, {
+    tryCatch(
+      run_report(input$as_of_date),
+      error = function(e) {
+        showNotification(paste("Query failed:", conditionMessage(e)),
+                         type = "error", duration = NULL)
+        NULL
+      }
+    )
+  })
+})
+
+output$status <- renderText({
+  df <- report_data()
+  req(df)
+  sprintf("Returned %s rows for report date %s.",
+          format(nrow(df), big.mark = ","), input$as_of_date)
+})
+```
+
+## Output
+
+::: {.panel-tabset}
+
+### Results
+
+```{r}
+#| echo: false
+DT::dataTableOutput("results")
+```
+
+### Verified SQL
+
+The exact query that ran, with the report date filled in. Copy it into
+Snowflake to reproduce these numbers independently.
+
+```{r}
+#| echo: false
+verbatimTextOutput("sql_ran")
+```
+
+:::
+
+```{r}
+#| context: server
+output$results <- DT::renderDataTable({
+  df <- report_data()
+  req(df)
+  DT::datatable(
+    df,
+    filter  = "top",
+    options = list(pageLength = 25, scrollX = TRUE),
+    rownames = FALSE
+  )
+})
+
+# Verified SQL tab: capture the resolved query on each run.
+sql_ran <- eventReactive(input$run, resolved_sql(input$as_of_date))
+output$sql_ran <- renderText(sql_ran())
+```
+
+## Export
+
+```{r}
+#| echo: false
+downloadButton("download_xlsx", "Download Excel")
+br(); br()
+textInput("email_to", "Email results to (optional)",
+          placeholder = "finance-close@company.com")
+actionButton("send_email", "Send email")
+```
+
+```{r}
+#| context: server
+# Excel download of the current result set.
+output$download_xlsx <- downloadHandler(
+  filename = function() paste0("revenue_check_", input$as_of_date, ".xlsx"),
+  content  = function(file) {
+    df <- report_data()
+    req(df)
+    writexl::write_xlsx(df, file)
+  }
+)
+
+# Optional email with the Excel file attached. Needs SMTP_* env vars set;
+# harmless to leave unconfigured (it just reports the send failed).
+observeEvent(input$send_email, {
+  df <- report_data()
+  if (is.null(df)) {
+    showNotification("Run the report before emailing.", type = "warning")
+    return(invisible())
+  }
+  if (!nzchar(input$email_to)) {
+    showNotification("Enter a recipient address.", type = "warning")
+    return(invisible())
+  }
+
+  # Bail out cleanly if SMTP isn't configured on this server.
+  if (!nzchar(Sys.getenv("SMTP_HOST")) ||
+      !nzchar(Sys.getenv("SMTP_USER")) ||
+      !nzchar(Sys.getenv("SMTP_PASS"))) {
+    showNotification(
+      paste("Email isn't configured on this server (needs SMTP_HOST,",
+            "SMTP_USER, SMTP_PASS). Use Download Excel instead."),
+      type = "warning", duration = NULL)
+    return(invisible())
+  }
+
+  tmp <- tempfile(fileext = ".xlsx")
+  writexl::write_xlsx(df, tmp)
+
+  msg <- blastula::compose_email(
+    body = blastula::md(glue::glue(
+      "Revenue data check for report date **{input$as_of_date}**. ",
+      "File attached ({format(nrow(df), big.mark = ',')} rows)."
+    ))
+  ) |>
+    blastula::add_attachment(tmp)
+
+  tryCatch({
+    blastula::smtp_send(
+      msg,
+      to          = input$email_to,
+      from        = Sys.getenv("REPORT_FROM_ADDRESS"),
+      subject     = glue::glue("Revenue data check \u2014 {input$as_of_date}"),
+      credentials = blastula::creds_envvar(
+        user        = Sys.getenv("SMTP_USER"),
+        pass_envvar = "SMTP_PASS",
+        host        = Sys.getenv("SMTP_HOST"),
+        port        = as.integer(Sys.getenv("SMTP_PORT", unset = "587")),
+        use_ssl     = TRUE
+      )
+    )
+    showNotification(paste("Email sent to", input$email_to), type = "message")
+  }, error = function(e) {
+    showNotification(paste("Email failed:", conditionMessage(e)),
+                     type = "error", duration = NULL)
+  })
+})
+```

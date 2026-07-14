@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "locale": "en_US",
+  "platform": "4.4.2",
+  "metadata": {
+    "appmode": "quarto-shiny",
+    "primary_rmd": "revenue-data-check.qmd",
+    "primary_html": null,
+    "content_category": null,
+    "has_parameters": false
+  },
+  "quarto": {
+    "version": "1.6.42",
+    "engines": ["knitr"]
+  },
+  "packages": {
+    "shiny": {
+      "Source": "CRAN",
+      "Repository": "https://cran.rstudio.com",
+      "description": { "Package": "shiny", "Version": "1.10.0" }
+    },
+    "DBI": {
+      "Source": "CRAN",
+      "Repository": "https://cran.rstudio.com",
+      "description": { "Package": "DBI", "Version": "1.2.3" }
+    },
+    "duckdb": {
+      "Source": "CRAN",
+      "Repository": "https://cran.rstudio.com",
+      "description": { "Package": "duckdb", "Version": "1.1.3" }
+    },
+    "DT": {
+      "Source": "CRAN",
+      "Repository": "https://cran.rstudio.com",
+      "description": { "Package": "DT", "Version": "0.33" }
+    },
+    "glue": {
+      "Source": "CRAN",
+      "Repository": "https://cran.rstudio.com",
+      "description": { "Package": "glue", "Version": "1.8.0" }
+    },
+    "writexl": {
+      "Source": "CRAN",
+      "Repository": "https://cran.rstudio.com",
+      "description": { "Package": "writexl", "Version": "1.5.1" }
+    },
+    "blastula": {
+      "Source": "CRAN",
+      "Repository": "https://cran.rstudio.com",
+      "description": { "Package": "blastula", "Version": "0.3.5" }
+    }
+  },
+  "files": {
+    "revenue-data-check.qmd": {
+      "checksum": "REGENERATE_WITH_writeManifest"
+    }
+  }
+}
