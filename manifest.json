@@ -1,58 +1,79 @@
 {
   "version": 1,
   "locale": "en_US",
-  "platform": "4.4.2",
+  "platform": "4.6.0",
   "metadata": {
-    "appmode": "quarto-shiny",
-    "primary_rmd": "revenue-data-check.qmd",
-    "primary_html": null,
+    "appmode": "static",
+    "primary_rmd": null,
+    "primary_html": "publish/revenue-data-check_5.html",
     "content_category": null,
     "has_parameters": false
   },
-  "quarto": {
-    "version": "1.6.42",
-    "engines": ["knitr"]
-  },
-  "packages": {
-    "shiny": {
-      "Source": "CRAN",
-      "Repository": "https://cran.rstudio.com",
-      "description": { "Package": "shiny", "Version": "1.10.0" }
-    },
-    "DBI": {
-      "Source": "CRAN",
-      "Repository": "https://cran.rstudio.com",
-      "description": { "Package": "DBI", "Version": "1.2.3" }
-    },
-    "duckdb": {
-      "Source": "CRAN",
-      "Repository": "https://cran.rstudio.com",
-      "description": { "Package": "duckdb", "Version": "1.1.3" }
-    },
-    "DT": {
-      "Source": "CRAN",
-      "Repository": "https://cran.rstudio.com",
-      "description": { "Package": "DT", "Version": "0.33" }
-    },
-    "glue": {
-      "Source": "CRAN",
-      "Repository": "https://cran.rstudio.com",
-      "description": { "Package": "glue", "Version": "1.8.0" }
-    },
-    "writexl": {
-      "Source": "CRAN",
-      "Repository": "https://cran.rstudio.com",
-      "description": { "Package": "writexl", "Version": "1.5.1" }
-    },
-    "blastula": {
-      "Source": "CRAN",
-      "Repository": "https://cran.rstudio.com",
-      "description": { "Package": "blastula", "Version": "0.3.5" }
-    }
-  },
+  "packages": null,
   "files": {
-    "revenue-data-check.qmd": {
-      "checksum": "REGENERATE_WITH_writeManifest"
+    ".superpowers/sdd/progress.md": {
+      "checksum": "aa3cfd50bb9330f2c7fe7aefa5fd4462"
+    },
+    ".superpowers/sdd/review-66ef593..b4b45c8.diff": {
+      "checksum": "0bd471c38aa715021aaff7c07301e68f"
+    },
+    ".superpowers/sdd/review-a5cd6c8..418fe75.diff": {
+      "checksum": "4da2e036da4560b63c6fb22e2d2c4e53"
+    },
+    ".superpowers/sdd/review-b4b45c8..a5cd6c8.diff": {
+      "checksum": "c52301e268236ada76db25237d3e2b72"
+    },
+    ".superpowers/sdd/review-b78b9ce..418fe75.diff": {
+      "checksum": "f09cb6efab943d1e569a495dd93db22e"
+    },
+    ".superpowers/sdd/review-b78b9ce..66ef593.diff": {
+      "checksum": "945e510e4bb4e75868644460b89e3536"
+    },
+    ".superpowers/sdd/task-1-brief.md": {
+      "checksum": "ff43ab241d9d0127a01df48669b16d89"
+    },
+    ".superpowers/sdd/task-1-report.md": {
+      "checksum": "b47362b0109c5d12d7907562987bc780"
+    },
+    ".superpowers/sdd/task-2-brief.md": {
+      "checksum": "3eecf58a9fb29070c8f76959b917c756"
+    },
+    ".superpowers/sdd/task-2-report.md": {
+      "checksum": "48a3777f0ac737bb77e44c9a8253b13b"
+    },
+    ".superpowers/sdd/task-3-brief.md": {
+      "checksum": "0d5a73b8baf90a577fe7bd23bc876969"
+    },
+    ".superpowers/sdd/task-3-report.md": {
+      "checksum": "d43060e1474a3dd7f7ed048d86a87e50"
+    },
+    ".superpowers/sdd/task-4-brief.md": {
+      "checksum": "6fafc35a4a9f40b24ba77741a42e9e23"
+    },
+    ".superpowers/sdd/task-4-report.md": {
+      "checksum": "54ddbccb34abd335d5e9bc35a2cebd4c"
+    },
+    "docs/superpowers/plans/2026-07-15-revenue-data-check-no-shiny.md": {
+      "checksum": "f8669add098b38562f1e318e90908e3b"
+    },
+    "docs/superpowers/specs/2026-07-15-revenue-data-check-no-shiny-design.md": {
+      "checksum": "c3b6300ca3276f4f977964b888d0978d"
+    },
+    "publish/revenue-data-check_5.html": {
+      "checksum": "b00fc2f93e5c148aba6a21ee0e58533e"
+    },
+    "publish/revenue-data-check_5.qmd": {
+      "checksum": "4eb9074ea37f595057969ddfff675328"
+    },
+    "publish/revenue-data-check_6.html": {
+      "checksum": "ee580bd05cc135b9ff2892b019ed9a49"
+    },
+    "publish/revenue-data-check_6.qmd": {
+      "checksum": "061c0f9328cb944dcab535ac6d44bd8d"
+    },
+    "scratch/exploration.qmd": {
+      "checksum": "ecee82ec09dd0fa60b86709ab8ff8ec0"
     }
-  }
+  },
+  "users": null
 }
