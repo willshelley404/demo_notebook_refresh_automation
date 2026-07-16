@@ -37,6 +37,8 @@ format:
 
 library(DBI)
 library(duckdb)
+library(knitr)
+library(markdown)
 
 # ojs_define() is normally injected by Quarto only when OJS cells are present.
 # Source the static version so this setup chunk can call it without a stub
@@ -62,13 +64,16 @@ seed_duckdb <- function(path) {
   customer_types <- c("Subscription Customer",
                       "Re-Occurring Usage Customer",
                       "Indirect Customer")
+  product_lines  <- c("Sales Tax Calc", "Returns Filing",
+                      "Cert Management", "Use Tax")
   sources <- c("CPQ", "NETSUITE ZAB", "EXCISE", "MYLODGE", "ZUORA INTEGRATED")
 
-  n_subs <- 300L
+  n_subs <- 1000L
   subs <- data.frame(
     SUBSCRIPTION_KEY = sprintf("SUB%05d", seq_len(n_subs)),
     CUSTOMER_TYPE    = sample(customer_types, n_subs, replace = TRUE,
                               prob = c(.70, .20, .10)),
+    PRODUCT_LINE     = sample(product_lines, n_subs, replace = TRUE),
     SOURCE           = sample(sources, n_subs, replace = TRUE,
                               prob = c(.60, .15, .10, .10, .05)),
     BASE_ARR         = round(runif(n_subs, 2000, 500000), 2),
@@ -80,6 +85,7 @@ seed_duckdb <- function(path) {
       REPORT_DATE      = d,
       SUBSCRIPTION_KEY = subs$SUBSCRIPTION_KEY,
       CUSTOMER_TYPE    = subs$CUSTOMER_TYPE,
+      PRODUCT_LINE     = subs$PRODUCT_LINE,
       SOURCE           = subs$SOURCE,
       ARR_USD          = round(subs$BASE_ARR * runif(n_subs, 0.9, 1.1), 2),
       stringsAsFactors = FALSE
@@ -92,7 +98,7 @@ seed_duckdb <- function(path) {
   DBI::dbWriteTable(con, "FACTARR", fact, overwrite = TRUE)
 }
 
-if (!file.exists(DUCKDB_PATH)) seed_duckdb(DUCKDB_PATH)
+seed_duckdb(DUCKDB_PATH)
 
 connect_db <- function() {
   DBI::dbConnect(duckdb::duckdb(), dbdir = DUCKDB_PATH, read_only = TRUE)
@@ -103,12 +109,13 @@ all_data <- DBI::dbGetQuery(con, sprintf("
   SELECT
       REPORT_DATE
       , CUSTOMER_TYPE
+      , PRODUCT_LINE
       , SOURCE
       , COUNT(DISTINCT SUBSCRIPTION_KEY)  AS SUBSCRIPTION_COUNT
       , SUM(ARR_USD)                      AS TOTAL_ARR_USD
       , SUM(MRR_USD)                      AS TOTAL_MRR_USD
   FROM FACTARR
-  GROUP BY REPORT_DATE, CUSTOMER_TYPE, SOURCE
+  GROUP BY REPORT_DATE, CUSTOMER_TYPE, PRODUCT_LINE, SOURCE
   ORDER BY REPORT_DATE, TOTAL_ARR_USD DESC
   LIMIT %d
 ", ROW_CAP * 18L))
@@ -121,6 +128,7 @@ sql_template <- sprintf("
 SELECT
     REPORT_DATE
     , CUSTOMER_TYPE
+    , PRODUCT_LINE
     , SOURCE
     , COUNT(DISTINCT SUBSCRIPTION_KEY)  AS SUBSCRIPTION_COUNT
     , SUM(ARR_USD)                      AS TOTAL_ARR_USD
@@ -131,7 +139,7 @@ WHERE REPORT_DATE = (
     FROM FACTARR
     WHERE REPORT_DATE <= CAST(? AS DATE)
 )
-GROUP BY REPORT_DATE, CUSTOMER_TYPE, SOURCE
+GROUP BY REPORT_DATE, CUSTOMER_TYPE, PRODUCT_LINE, SOURCE
 ORDER BY TOTAL_ARR_USD DESC
 LIMIT %d
 ", ROW_CAP)
@@ -159,7 +167,16 @@ viewof selected_date = Inputs.date({
   max:   today_str
 })
 
-viewof run_btn = Inputs.button("▶ Run now", {value: 0})
+viewof run_btn = {
+  const btn = html`<button class="btn btn-primary btn-lg" style="margin-top:4px">▶ Run now</button>`
+  let count = 0
+  btn.addEventListener("click", () => {
+    count++
+    btn.dispatchEvent(new CustomEvent("input"))
+  })
+  Object.defineProperty(btn, "value", { get: () => count })
+  return btn
+}
 ```
 
 ```{ojs}
@@ -183,8 +200,14 @@ resolved_snapshot = {
   return eligible.length > 0 ? eligible[eligible.length - 1] : null
 }
 
+run_date = run_btn > 0
+  ? new Date().toLocaleString("en-US", {dateStyle: "short", timeStyle: "short"})
+  : ""
+
 filtered_rows = run_btn > 0 && resolved_snapshot != null
-  ? all_data_rows.filter(r => r.REPORT_DATE === resolved_snapshot)
+  ? all_data_rows
+      .filter(r => r.REPORT_DATE === resolved_snapshot)
+      .map(r => ({...r, RUN_DATE: run_date}))
   : []
 ```
 
@@ -222,15 +245,17 @@ run_btn > 0
           minimumFractionDigits: 2, maximumFractionDigits: 2
         })
       },
-      columns: ["REPORT_DATE", "CUSTOMER_TYPE", "SOURCE",
-                "SUBSCRIPTION_COUNT", "TOTAL_ARR_USD", "TOTAL_MRR_USD"],
+      columns: ["REPORT_DATE", "CUSTOMER_TYPE", "PRODUCT_LINE", "SOURCE",
+                "SUBSCRIPTION_COUNT", "TOTAL_ARR_USD", "TOTAL_MRR_USD", "RUN_DATE"],
       width: {
         REPORT_DATE:        110,
         CUSTOMER_TYPE:      200,
+        PRODUCT_LINE:       150,
         SOURCE:             150,
         SUBSCRIPTION_COUNT: 130,
         TOTAL_ARR_USD:      150,
-        TOTAL_MRR_USD:      150
+        TOTAL_MRR_USD:      150,
+        RUN_DATE:           160
       }
     })
   : html`<p><em>Click <strong>▶ Run now</strong> above to see results.</em></p>`
@@ -263,8 +288,8 @@ Download the current result set as CSV. To open in Excel, use
 
 csv_string = {
   if (filtered_rows.length === 0) return ""
-  const cols = ["REPORT_DATE", "CUSTOMER_TYPE", "SOURCE",
-                "SUBSCRIPTION_COUNT", "TOTAL_ARR_USD", "TOTAL_MRR_USD"]
+  const cols = ["REPORT_DATE", "CUSTOMER_TYPE", "PRODUCT_LINE", "SOURCE",
+                "SUBSCRIPTION_COUNT", "TOTAL_ARR_USD", "TOTAL_MRR_USD", "RUN_DATE"]
   const esc = v =>
     (typeof v === "string" && /[",\n]/.test(v))
       ? `"${v.replace(/"/g, '""')}"` : v
